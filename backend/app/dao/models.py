@@ -66,4 +66,4 @@ class PhotoFeedback(Base):
     feedback_id: Mapped[int] = mapped_column(ForeignKey('feedbacks.id', ondelete='CASCADE'))
 
     __table_args__ = (
-        Index('ix_photofeedback_feedback_id', 'feedback_id'))
+        Index('ix_photofeedback_feedback_id', 'feedback_id'),)

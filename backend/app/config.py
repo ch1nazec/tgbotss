@@ -10,7 +10,13 @@ class Settings(BaseSettings):
     ADMIN_IDS: list[int]
     FORMAT_LOGS: str = '{time:YYYY-MM-DD at HH:mm:ss} | {level} | {message}'
     LOG_ROTATION: str = '10 MB'
-    DB_URL: str = 'sqlite+aiosqlite:///data/db.sqlite3'
+
+    DB_USER: str
+    DB_NAME: str
+    DB_PASS: str
+    DB_HOST: str
+    DB_PORT: str
+
     STORE_URL: str = 'sqlite:///data/jobs.sqlite'
     BASE_SITE: str
     TG_APP_SITE: str
@@ -24,9 +30,13 @@ class Settings(BaseSettings):
     
     def get_tg_api_url(self) -> str:
         return f'{self.TG_APP_SITE}/bot{self.BOT_TOKEN}'
+    
+    @property
+    def get_db_url(self) -> str:
+        return f'postgresql+asyncpg://{self.DB_USER}:{self.DB_PASS}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}'
 
 
 settings = Settings()
-database_url = settings.DB_URL
+database_url = settings.get_db_url
 scheduler = AsyncIOScheduler(
     jostore={'default': SQLAlchemyJobStore(url=settings.STORE_URL)})
