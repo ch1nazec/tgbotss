@@ -1,6 +1,6 @@
-from datetime import date
+from datetime import date, time, datetime
 from typing import List
-from sqlalchemy import Integer, Text, ForeignKey, String, Date, CheckConstraint, Index
+from sqlalchemy import Integer, Text, ForeignKey, String, Date, CheckConstraint, Index, DateTime, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.dao.database import Base
 
@@ -41,6 +41,10 @@ class Recording(Base):
     master: Mapped['Master'] = relationship(back_populates='records')
 
     feedback: Mapped['Feedback'] = relationship(back_populates='record')
+
+    day_booking: Mapped[date] = mapped_column(nullable=False)
+    time_booking: Mapped[time] = mapped_column(nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=func.now())
 
     __table_args__ = (
         Index('ix_recording_user_id', 'user_id'),
