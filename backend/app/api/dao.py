@@ -1,5 +1,4 @@
-from datetime import date, timedelta, datetime, time, timezone
-from typing import List
+from datetime import date, timedelta, datetime, time
 from fastapi import HTTPException
 from loguru import logger
 
@@ -35,38 +34,64 @@ class RecordingDAO(BaseDAO[Recording]):
             current_time += timedelta(hours=step_hours)
         return working_hours
     
+    
     @classmethod
-    async def get_available_slots(cls, session: AsyncSession, user_id: int, master_id: int, start_date: date):
+    async def get_available_slots(cls, session: AsyncSession, master_id: int, start_date: date):
         try:
-            if user_id == master_id:
-                raise HTTPException(status_code=304, detail='Вы не можете записаться на себя')
-            
-            start_week = start_date - timedelta(days=start_date.weekday())
-            end_of_week = start_date + timedelta(days=5)
+            end_date = start_date + timedelta(days=6)
+            working_hours = cls.generate_working_hours()
 
             query = select(cls.model).where(
                 and_(
-                    cls.model.master_id == master_id,
+                    cls.model.master_id==master_id,
                     cls.model.day_booking >= start_date,
-                    cls.model.day_booking <= end_of_week
+                    cls.model.day_booking <= end_date
                 )
             )
             result = await session.execute(query)
-            existings_books = result.scalars().all()
+            data_date = result.scalars().all()
+            date_time_date = {(
+                    models.day_booking.isoformat(),
+                    models.time_booking.strftime('%H:%M')
+                ) for models in data_date}
+            
+            available_slots = []
+            while start_date <= end_date:
+                date_iso = start_date.isoformat()
 
-            working_hours = cls.generate_working_hours()
-            booked_busy = {
-                (
-                    book.day_booking.strftime('%d-%m'),
-                    book.time_booking.strftime('%H:%M')
-                )
-                for book in existings_books
-            }
+                day_slots = []
+                if date_iso >= datetime.now().date().isoformat():
+                    for time_str in working_hours:
+                        is_available = (date_iso, time_str) not in date_time_date
 
-            week_days_rus = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"]
-            availables_slots = []
+                        if date_iso == datetime.now().date().isoformat():
+                            slot_time = datetime.strptime(time_str, '%H:%M').time()
 
-            for i in range(len(week_days_rus)):
-                ...
-        except:
-            ...
+                            if slot_time <= datetime.now().time():
+                                is_available = False
+                    
+                        if is_available:
+                            day_slots.append(time_str)
+
+                available_slots.append({
+                    'date': date_iso,
+                    'time': day_slots,
+                    'total_slots': len(day_slots)
+                })
+
+                start_date += timedelta(days=1)
+            return available_slots
+
+
+        except BaseException as err:
+            logger.error(f'Произошла ошибка: {err}')
+            raise HTTPException(
+                status_code=500, detail='Error while getting available slots')
+    
+    @classmethod
+    async def book_appointment(cls, session: AsyncSession,
+                               master_id: int, user_id: int, date_book: date, time_book: time):
+        if user_id == master_id:
+            raise HTTPException(status_code=400, detail='Нельзя записаться к себе')
+        if date_book < date.today():
+            raise HTTPException(status_code=400, detail='Нельзя записатьзя задним числом.')
