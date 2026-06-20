@@ -2,17 +2,41 @@ from datetime import date, timedelta, datetime, time
 from fastapi import HTTPException
 from loguru import logger
 
+from pydantic import BaseModel
+
 from sqlalchemy import select, and_, func
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.schemas import UserModel, UserCreate
 from app.dao.base import BaseDAO
 from app.dao.models import User, Recording, Master, Feedback, PhotoFeedback
 
 
+class PhotoFeedbackDAO(BaseDAO[PhotoFeedback]):
+    model = PhotoFeedback
+
+
 class UserDAO(BaseDAO[User]):
     model = User
+
+    @classmethod
+    async def create_or_get(cls, session: AsyncSession, user_data: UserCreate) -> UserModel:
+        try:
+            result = await cls.find_one_or_none(session=session, filter_data=user_data)
+            if not result:
+                raise NoResultFound
+            else:
+                return result
+        except NoResultFound:
+            user_model = cls.model(**user_data.model_dump(exclude_unset=True))
+            await cls.add(session, user_model)
+            return user_model
+        
+        except Exception as err:
+            logger.error(f'Ошибка: {err}')
+            raise err
 
 
 class MasterDAO(BaseDAO[Master]):
@@ -89,9 +113,80 @@ class RecordingDAO(BaseDAO[Recording]):
                 status_code=500, detail='Error while getting available slots')
     
     @classmethod
+    async def check_book(cls, session: AsyncSession, user_id: int, date_book: date, time_book: time):
+        try:
+            query = select(cls.model).where(
+                cls.model.user_id == user_id,
+                cls.model.day_booking == date_book,
+                cls.model.time_booking == time_book
+            )
+            result = await session.execute(query)
+            result_scalar = result.scalars().all()
+
+            return True if result_scalar else False
+        except BaseException as err:
+            logger.error(f'Хуебесы отказываются искать записи пользователя к мастурбаторам: {err}')
+            raise HTTPException(
+                status_code=503, detail='Сервер встал на сторону хуебесов и не хочет вас обслуживать')
+    
+    @classmethod
     async def book_appointment(cls, session: AsyncSession,
                                master_id: int, user_id: int, date_book: date, time_book: time):
         if user_id == master_id:
             raise HTTPException(status_code=400, detail='Нельзя записаться к себе')
         if date_book < date.today():
-            raise HTTPException(status_code=400, detail='Нельзя записатьзя задним числом.')
+            raise HTTPException(status_code=400, detail='Нельзя записатьзя задним числом. Хуебесы будут злиться!')
+        
+        try:
+            query = select(cls.model).where(
+                cls.model.master_id == master_id,
+                cls.model.time_booking == time_book,
+                cls.model.day_booking == date_book
+                )
+            result = await session.execute(query)
+            existing_booking = result.scalar_one_or_none()
+
+            if existing_booking:
+                raise HTTPException(status_code=400, detail='Запись такая уже есть.')
+            user_books = await cls.check_book(session=session, user_id=user_id, time_book=time_book, date_book=date_book)
+            if user_books:
+                raise HTTPException(status_code=400, detail='Вы записаны к другому мастеру.')
+
+            book = cls.model(
+                master_id=master_id, user_id=user_id, day_booking=date_book, time_booking=time_book)
+            session.add(book)
+            await session.commit()
+
+            return book
+        except BaseException as err:
+            logger.error(f'Хуебесы отказались вас принимать. Причина: {err}')
+            await session.rollback()
+
+            raise HTTPException(
+                status_code=503, detail='Сервер встал на сторону хуебесов и не хочет вас обслуживать')
+
+
+class FeedbackDAO(BaseDAO[Feedback]):
+    model = Feedback
+
+
+    @classmethod
+    async def add_moro_photos(cls, session: AsyncSession,
+                              feedback_data: BaseModel,
+                              path_url: list[str]):
+        try:
+            feedback_dict = feedback_data.model_dump(exclude_unset=True)
+
+            new_feedback = cls.model(**feedback_dict)
+
+            new_feedback.photofeedback = [
+                path for path in path_url]
+            session.add(new_feedback)
+
+            await session.flush()
+            logger.info('Всё успешно загружено.')
+        except BaseException as err:
+            await session.rollback()
+
+            logger.error(f'Произошла ошибка {cls.model.__name__} с данными: {err}')
+            raise err

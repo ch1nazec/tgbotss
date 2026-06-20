@@ -1,4 +1,5 @@
-from typing import List, Any, TypeVar, Generic
+from pydantic import BaseModel
+from typing import TypeVar, Generic
 from pydantic import BaseModel
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.future import select
@@ -30,7 +31,7 @@ class BaseDAO(Generic[T]):
             return record
         except SQLAlchemyError as e:
             logger.error(f'Ошибка при поиске записи {cls.model.__name__} по ID {id}: {e}')
-            raise
+            raise e
     
 
     @classmethod
@@ -50,3 +51,45 @@ class BaseDAO(Generic[T]):
             return record
         except SQLAlchemyError as e:
             logger.error(f'Ошибка при поиске по записи {cls.model.__name__} по фильтрам: {e}')
+            raise e
+    
+
+    @classmethod
+    async def add(cls, session: AsyncSession, values: BaseModel):
+        values_dict = values.model_dump(exclude_unset=True)
+        logger.info(f'Добавление записи {cls.model.__name__} с данными {values_dict}')
+
+        new_instance = cls.model(**values_dict)
+        session.add(new_instance)
+
+        try:
+            await session.flush()
+            logger.info('Всё прошло успешно')
+            return new_instance
+        except Exception as err:
+            logger.error(f'Произошла ошибка: {err}')
+            await session.rollback()
+
+            raise err
+        
+    
+    @classmethod
+    async def update_for_id(cls, session: AsyncSession, new_value: BaseModel, record_id: int):
+        values_new = new_value.model_dump(exclude_unset=True)
+
+        logger.info(f'Обновление данных объекта {cls.model}')
+        try:
+            recording = await cls.find_one_or_none_id(record_id, session=session)
+            if not recording:
+                logger.warning(f'Объект {cls.model.__name__} с ID {record_id} не найден для обновления')
+                return
+
+            for key, value in values_new.items():
+                setattr(recording, key, value)
+
+            await session.flush()
+            return recording
+        except Exception as err:
+            logger.error(f'Произошла ошибка в модели {cls.model}: {err}')
+            await session.rollback()
+            raise err
