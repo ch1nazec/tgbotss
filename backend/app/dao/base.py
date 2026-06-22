@@ -8,6 +8,8 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.dao.database import Base
 
+from api.dao import UserModel
+
 
 T = TypeVar('T', bound=Base)
 
@@ -16,7 +18,7 @@ class BaseDAO(Generic[T]):
     model: type[T]
 
     @classmethod
-    async def find_one_or_none_id(cls, id: int, session: AsyncSession):
+    async def find_one_or_none_id(cls, id: int, session: AsyncSession) -> UserModel:
         logger.info(f'Поиск {cls.model.__name__} класса по id: {id}')
 
         try:

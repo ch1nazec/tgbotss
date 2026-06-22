@@ -10,6 +10,8 @@ class RecordingRequest(BaseModel):
     day_booking: date
     time_booking: time
 
+    model_config = ConfigDict(from_attributes=True)
+
 
 class UserModel(BaseModel):
     id: int
@@ -29,6 +31,8 @@ class MasterModel(BaseModel):
     
     user_id: int
     stage: int
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class FeedbackModel(BaseModel):

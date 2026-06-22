@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.schemas import UserModel, UserCreate
+from api.schemas import UserModel, UserCreate, MasterCreate, MasterModel
 from app.dao.base import BaseDAO
 from app.dao.models import User, Recording, Master, Feedback, PhotoFeedback
 
@@ -37,10 +37,50 @@ class UserDAO(BaseDAO[User]):
         except Exception as err:
             logger.error(f'Ошибка: {err}')
             raise err
+    
+    @classmethod
+    async def get_booking_user(cls, session: AsyncSession, user_id: int):
+        try:
+
+            user = UserDAO.find_one_or_none_id(user_id, session)
+            if not user:
+                logger.warning(f'Пользователь с ID {user_id} не найден')
+                return
+            
+            query = select(Recording).where(
+                Recording.user_id==user_id)
+            result = await session.execute(query)
+            result_scalars = result.scalars().all()
+
+            return result_scalars
+        except Exception as err:
+            await session.rollback()
+            logger.error(f'Произошла ошибка в получение записей юзера по ID {user_id}: {err}')
+            raise err
 
 
 class MasterDAO(BaseDAO[Master]):
     model = Master
+
+    @classmethod
+    async def user_to_master(cls, session: AsyncSession, user_id: int) -> MasterModel:
+        try:
+            logger.info(f'Begin to make root master of user with ID: {user_id}')
+            user = await UserDAO.find_one_or_none_id(user_id, session)
+
+            if not user:
+                raise HTTPException(status_code=404, detail=f'User with id: {user_id} not found')
+
+            master_pydantic = MasterCreate(user_id=user_id, stage=0)
+            master = await cls.add(session=session, values=master_pydantic)
+
+            await session.flush(); return master
+        except Exception as err:
+            if session.is_active:
+                await session.rollback()
+
+            logger.error(f'Error: {err}')
+            raise err
 
 
 class RecordingDAO(BaseDAO[Recording]):
@@ -155,7 +195,7 @@ class RecordingDAO(BaseDAO[Recording]):
             book = cls.model(
                 master_id=master_id, user_id=user_id, day_booking=date_book, time_booking=time_book)
             session.add(book)
-            await session.commit()
+            await session.flush()
 
             return book
         except BaseException as err:
