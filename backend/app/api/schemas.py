@@ -9,7 +9,6 @@ class RecordingRequest(BaseModel):
     master_id: int
     day_booking: date
     time_booking: time
-
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -22,7 +21,6 @@ class UserModel(BaseModel):
     first_name: str
     third_name: str | None = None
     date_birth: date
-
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -31,15 +29,16 @@ class MasterModel(BaseModel):
     
     user_id: int
     stage: int
-
     model_config = ConfigDict(from_attributes=True)
 
 
 class FeedbackModel(BaseModel):
     id: int
     
+    record_id: int
     rating: int
     description: str
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PhotoFeedbackModel(BaseModel):
@@ -47,7 +46,6 @@ class PhotoFeedbackModel(BaseModel):
     
     photo: str
     feedback_id: int
-
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -78,8 +76,10 @@ class MasterCreate(BaseModel):
 
 
 class FeedbackCreate(BaseModel):
+    record_id: int
     rating: int
     description: str
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PhotoFeedbackCreate(BaseModel):

@@ -85,7 +85,6 @@ class MasterDAO(BaseDAO[Master]):
 
 class RecordingDAO(BaseDAO[Recording]):
     model = Recording
-
     
     @classmethod
     def generate_working_hours(cls, start_hour=10, end_hour=20, step_hours=2) -> list[str]:
@@ -211,7 +210,7 @@ class FeedbackDAO(BaseDAO[Feedback]):
 
 
     @classmethod
-    async def add_moro_photos(cls, session: AsyncSession,
+    async def add_more_photos(cls, session: AsyncSession,
                               feedback_data: BaseModel,
                               path_url: list[str]):
         try:
@@ -229,4 +228,27 @@ class FeedbackDAO(BaseDAO[Feedback]):
             await session.rollback()
 
             logger.error(f'Произошла ошибка {cls.model.__name__} с данными: {err}')
+            raise err
+    
+    @classmethod
+    async def get_feedbacks_by_record_id(cls, session: AsyncSession, record_id: int):
+        try:
+            logger.info('Поиск отзывов по записи')
+
+            record = await RecordingDAO.find_one_or_none_id(record_id, session)
+            if not record:
+                logger.warning(f'Запись с ID {record_id} не найдена')
+                return 
+
+            query = select(cls.model).where(
+                cls.model.record_id==record.id)
+            
+            result = await session.execute(query)
+            result_scalars = result.scalars().all()
+
+            return result_scalars
+        except Exception as err:
+            await session.rollback()
+            logger.error(f'Произошла ошибка при поиске отзывов по записи: {err}')
+
             raise err
