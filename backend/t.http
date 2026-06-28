@@ -1,0 +1,9 @@
+POST http://127.0.0.1:8000/book/ HTTP/1.1
+Content-Type: application/json
+
+{
+    "user_id": 18,
+    "master_id": "1",
+    "day_booking": "2026-06-30",
+    "time_booking": "12:00"
+}

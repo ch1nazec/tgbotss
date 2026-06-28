@@ -19,10 +19,13 @@ master_router = APIRouter(prefix='/master')
 @master_router.get('/available-slots/{master_id}')
 async def master_available_slots(
             master_id: int,
-            date_start: date,
             session: AsyncSession = Depends(DatabaseSession.get_db
     )):
-    book_available = await RecordingDAO.get_available_slots(session=session, master_id=master_id, start_date=date_start)
+    check_master = await MasterDAO.find_one_or_none_id(id=master_id, session=session)
+    if not check_master:
+        raise HTTPException(status_code=404, detail='Хуебесы не нашли такого мастера :(')
+    
+    book_available = await RecordingDAO.get_available_slots(session=session, master_id=master_id, start_date=date.today())
     return book_available
 
 
@@ -31,7 +34,7 @@ async def make_user_to_master(
     user_id: int,
     session: AsyncSession = Depends(DatabaseSession.get_db_with_commit
                                         )):
-    check_user = await UserDAO.find_one_or_none_id(user_id)
+    check_user = await UserDAO.find_one_or_none_id(session=session, id=user_id)
     if not check_user:
         raise HTTPException(status_code=404, detail=f'Хуебесы не смогли найти юзера по {user_id}')
 

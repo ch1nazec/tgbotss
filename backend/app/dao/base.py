@@ -4,9 +4,10 @@ from pydantic import BaseModel
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.future import select
 from sqlalchemy import update as sqlalchemy_update, delete as sqlalchemy_delete
+from sqlalchemy.orm import selectinload
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.dao.database import Base
+from dao.database import Base
 
 from api.dao import UserModel
 
@@ -19,6 +20,7 @@ class BaseDAO(Generic[T]):
 
     @classmethod
     async def find_one_or_none_id(cls, id: int, session: AsyncSession) -> UserModel:
+        """Поиск записи по id или возврат None"""
         logger.info(f'Поиск {cls.model.__name__} класса по id: {id}')
 
         try:
@@ -31,13 +33,14 @@ class BaseDAO(Generic[T]):
             else:
                 logger.info(f'Запись с id {id} не найдена')
             return record
-        except SQLAlchemyError as e:
+        except Exception as e:
             logger.error(f'Ошибка при поиске записи {cls.model.__name__} по ID {id}: {e}')
             raise e
     
 
     @classmethod
     async def find_one_or_none(cls, session: AsyncSession, filter_data: BaseModel):
+        """Поиск записи по готовым фильтрам или возврат None"""
         filter_dict = filter_data.model_dump(exclude_unset=True)
         logger.info(f'Поиск {cls.model.__name__} по фильтрам {filter_data}')
 
@@ -58,6 +61,7 @@ class BaseDAO(Generic[T]):
 
     @classmethod
     async def add(cls, session: AsyncSession, values: BaseModel):
+        """Добавить запись определённого класса"""
         values_dict = values.model_dump(exclude_unset=True)
         logger.info(f'Добавление записи {cls.model.__name__} с данными {values_dict}')
 
@@ -77,6 +81,7 @@ class BaseDAO(Generic[T]):
     
     @classmethod
     async def update_for_id(cls, session: AsyncSession, new_value: BaseModel, record_id: int):
+        """Обновление записи по id"""
         values_new = new_value.model_dump(exclude_unset=True)
 
         logger.info(f'Обновление данных объекта {cls.model}')

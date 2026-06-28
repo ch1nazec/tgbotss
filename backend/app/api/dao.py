@@ -10,8 +10,8 @@ from sqlalchemy.orm import joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.schemas import UserModel, UserCreate, MasterCreate, MasterModel
-from app.dao.base import BaseDAO
-from app.dao.models import User, Recording, Master, Feedback, PhotoFeedback
+from dao.base import BaseDAO
+from dao.models import User, Recording, Master, Feedback, PhotoFeedback
 
 
 class PhotoFeedbackDAO(BaseDAO[PhotoFeedback]):
@@ -23,6 +23,7 @@ class UserDAO(BaseDAO[User]):
 
     @classmethod
     async def create_or_get(cls, session: AsyncSession, user_data: UserCreate) -> UserModel:
+        '''Создать пользователя или получить его на подобие функции Django'''
         try:
             result = await cls.find_one_or_none(session=session, filter_data=user_data)
             if not result:
@@ -30,9 +31,9 @@ class UserDAO(BaseDAO[User]):
             else:
                 return result
         except NoResultFound:
-            user_model = cls.model(**user_data.model_dump(exclude_unset=True))
-            await cls.add(session, user_model)
-            return user_model
+            # user_model = cls.model(**user_data.model_dump(exclude_unset=True))
+            return await cls.add(session, user_data)
+            # return user_model
         
         except Exception as err:
             logger.error(f'Ошибка: {err}')
@@ -40,6 +41,7 @@ class UserDAO(BaseDAO[User]):
     
     @classmethod
     async def get_booking_user(cls, session: AsyncSession, user_id: int):
+        '''Получить все записи пользователя'''
         try:
 
             user = UserDAO.find_one_or_none_id(user_id, session)
@@ -64,6 +66,7 @@ class MasterDAO(BaseDAO[Master]):
 
     @classmethod
     async def user_to_master(cls, session: AsyncSession, user_id: int) -> MasterModel:
+        '''Дать права обычному юзеру мастера'''
         try:
             logger.info(f'Begin to make root master of user with ID: {user_id}')
             user = await UserDAO.find_one_or_none_id(user_id, session)
@@ -88,6 +91,7 @@ class RecordingDAO(BaseDAO[Recording]):
     
     @classmethod
     def generate_working_hours(cls, start_hour=10, end_hour=20, step_hours=2) -> list[str]:
+        '''Генерация доступных часов записи (по умолчанию диапазон 10-20 в промежутке 2 часов)'''
         working_hours = []
         current_time = datetime.strptime(f'{start_hour}:00', '%H:%M')
         end_time = datetime.strptime(f'{end_hour}:00', '%H:%M')
@@ -100,6 +104,7 @@ class RecordingDAO(BaseDAO[Recording]):
     
     @classmethod
     async def get_available_slots(cls, session: AsyncSession, master_id: int, start_date: date):
+        '''Получить свободные слоты'''
         try:
             end_date = start_date + timedelta(days=6)
             working_hours = cls.generate_working_hours()
@@ -152,7 +157,12 @@ class RecordingDAO(BaseDAO[Recording]):
                 status_code=500, detail='Error while getting available slots')
     
     @classmethod
-    async def check_book(cls, session: AsyncSession, user_id: int, date_book: date, time_book: time):
+    async def check_book(cls,
+                         session: AsyncSession,
+                         user_id: int,
+                         date_book: date,
+                         time_book: time) -> bool:
+        '''Проверка наличие какой-либо записи'''
         try:
             query = select(cls.model).where(
                 cls.model.user_id == user_id,
@@ -169,40 +179,66 @@ class RecordingDAO(BaseDAO[Recording]):
                 status_code=503, detail='Сервер встал на сторону хуебесов и не хочет вас обслуживать')
     
     @classmethod
-    async def book_appointment(cls, session: AsyncSession,
-                               master_id: int, user_id: int, date_book: date, time_book: time):
+    async def book_appointment(cls,
+                               session: AsyncSession,
+                           master_id: int,
+                           user_id: int,
+                           date_book: date,
+                           time_book: time):
         if user_id == master_id:
             raise HTTPException(status_code=400, detail='Нельзя записаться к себе')
         if date_book < date.today():
-            raise HTTPException(status_code=400, detail='Нельзя записатьзя задним числом. Хуебесы будут злиться!')
+            raise HTTPException(status_code=400, detail='Нельзя записаться задним числом. Хуебесы будут злиться!')
         
         try:
-            query = select(cls.model).where(
-                cls.model.master_id == master_id,
-                cls.model.time_booking == time_book,
-                cls.model.day_booking == date_book
-                )
+            # 1. Возвращаем обратно проверку существующей записи (вы ее случайно удалили)
+            query = select(Recording).where(
+                Recording.master_id == master_id,
+                Recording.time_booking == time_book,
+                Recording.day_booking == date_book
+            )
             result = await session.execute(query)
             existing_booking = result.scalar_one_or_none()
 
             if existing_booking:
                 raise HTTPException(status_code=400, detail='Запись такая уже есть.')
+                
+            # 2. Проверяем записи пользователя
             user_books = await cls.check_book(session=session, user_id=user_id, time_book=time_book, date_book=date_book)
             if user_books:
                 raise HTTPException(status_code=400, detail='Вы записаны к другому мастеру.')
+            
+            # 3. Создаем и добавляем новую запись
+            new_booking = Recording(
+                master_id=master_id,
+                user_id=user_id,
+                day_booking=date_book,
+                time_booking=time_book
+            )
+            session.add(new_booking)
+            await session.flush()  # Генерирует ID для new_booking
 
-            book = cls.model(
-                master_id=master_id, user_id=user_id, day_booking=date_book, time_booking=time_book)
-            session.add(book)
-            await session.flush()
+            # 4. Загружаем запись вместе с мастром через joinedload
+            query_refresh = select(Recording).where(Recording.id == new_booking.id).options(joinedload(Recording.master))
+            result_refresh = await session.execute(query_refresh)
+            booking = result_refresh.scalar_one_or_none()
 
-            return book
-        except BaseException as err:
-            logger.error(f'Хуебесы отказались вас принимать. Причина: {err}')
+            return booking
+
+        except HTTPException:
+            # Пробрасываем наши HTTPException (400 ошибки) дальше, не делая из них 503
+            raise
+
+        except Exception as err:
+            # Безопасно извлекаем текст ошибки без триггера MissingGreenlet
+            error_msg = err.args if err.args else str(err)
+            logger.error(f'Хуебесы отказались вас принимать. Причина: {error_msg}')
+            
             await session.rollback()
-
             raise HTTPException(
-                status_code=503, detail='Сервер встал на сторону хуебесов и не хочет вас обслуживать')
+                status_code=503, 
+                detail='Сервер встал на сторону хуебесов и не хочет вас обслуживать'
+            )
 
 
 class FeedbackDAO(BaseDAO[Feedback]):
@@ -210,9 +246,13 @@ class FeedbackDAO(BaseDAO[Feedback]):
 
 
     @classmethod
-    async def add_more_photos(cls, session: AsyncSession,
+    async def add_more_photos(
+                              cls,
+                              session: AsyncSession,
                               feedback_data: BaseModel,
-                              path_url: list[str]):
+                              path_url: list[str]
+                              ):
+        '''Добавить фотографии к отзыву'''
         try:
             feedback_dict = feedback_data.model_dump(exclude_unset=True)
 
@@ -231,7 +271,12 @@ class FeedbackDAO(BaseDAO[Feedback]):
             raise err
     
     @classmethod
-    async def get_feedbacks_by_record_id(cls, session: AsyncSession, record_id: int):
+    async def get_feedbacks_by_record_id(
+                                    cls,
+                                    session: AsyncSession,
+                                    record_id: int
+                                    ):
+        '''Поиск отзывов по записи'''
         try:
             logger.info('Поиск отзывов по записи')
 

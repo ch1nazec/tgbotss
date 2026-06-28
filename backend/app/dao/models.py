@@ -1,12 +1,12 @@
 from datetime import date, time, datetime
 from typing import List
-from sqlalchemy import Integer, Text, ForeignKey, String, Date, CheckConstraint, Index, DateTime, func
+from sqlalchemy import BigInteger, Text, ForeignKey, String, Date, CheckConstraint, Index, DateTime, func, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from app.dao.database import Base
+from .database import Base
 
 
 class User(Base):
-    telegram_id: Mapped[int] = mapped_column(Integer, unique=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True)
 
     last_name: Mapped[str] = mapped_column(String(100), nullable=False)
     first_name: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -66,7 +66,7 @@ class Feedback(Base):
 class PhotoFeedback(Base):
     photo: Mapped[str] = mapped_column(String(500), nullable=False)
 
-    feedback: Mapped['Feedback'] = relationship(back_populates='photofeedback', uselist=False)
+    feedbacks: Mapped['Feedback'] = relationship(back_populates='photofeedback', uselist=False)
     feedback_id: Mapped[int] = mapped_column(ForeignKey('feedbacks.id', ondelete='CASCADE'))
 
     __table_args__ = (

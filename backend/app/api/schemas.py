@@ -93,8 +93,10 @@ class PhotoFeedbackCreate(BaseModel):
 
 
 class UserUpdate(BaseModel):
-    last_name: str
-    first_name: str
+    last_name: str | None = None
+    first_name: str | None = None
     third_name: str | None = None
 
-    date_birth: date
+    date_birth: date | None = None
+
+    model_config = ConfigDict(from_attributes=True)

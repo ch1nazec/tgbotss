@@ -1,7 +1,7 @@
 from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.dao.database import async_session_maker
+from dao.database import async_session_maker
 
 
 class DatabaseSession:
