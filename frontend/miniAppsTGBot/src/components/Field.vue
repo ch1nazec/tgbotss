@@ -4,25 +4,23 @@
         class="InputField"
         type="text"
         :placeholder="placeholder"
+        v-model="model"
         >
     </div>
 </template>
 
-<script>
-export default {
-    name: 'Field',
-    props: {
-        placeholder: {
-            type: [String],
-            default: ''
-        }
-    }
-}
+<script setup>
+const model = defineModel({ type: String, default: ''})
+
+defineProps({
+    placeholder: {
+        default: '',}
+}) 
 </script>
 
 <style>
 .InputField {
-    border: none;
+    border: solid 0.5px;
     border-radius: 3px;
     width: 100%;
     /* height: 10vw; */

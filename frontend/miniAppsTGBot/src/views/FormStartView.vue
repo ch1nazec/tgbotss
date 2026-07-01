@@ -4,13 +4,17 @@ import { authVerifyTGStore } from '@/stores/authStoreTG';
 
 
 const authStore = authVerifyTGStore();
+const sendData = async (formData) => {
+    console.log(formData)
+}
 </script>
 
 <template>
     <div class="main-start">
         <img class="main-start__avatar" :src="authStore.responseUser.photo" alt="">
         <p class="main-start__hellotext">Привет!</p>
-        <FormStart />
+        
+        <FormStart @submit="sendData"/>  
     </div>
 </template>
 
