@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     DB_HOST: str
     DB_PORT: str
 
+    BOT_TOKEN: str
+
     STORE_URL: str = 'sqlite:///data/jobs.sqlite'
     BASE_SITE: str
     TG_APP_SITE: str
@@ -37,6 +39,9 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
 database_url = settings.get_db_url
+bot_token = settings.BOT_TOKEN
+
 scheduler = AsyncIOScheduler(
     jostore={'default': SQLAlchemyJobStore(url=settings.STORE_URL)})
